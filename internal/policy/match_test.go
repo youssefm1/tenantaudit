@@ -1,0 +1,117 @@
+package policy
+
+import "testing"
+
+func TestGlob(t *testing.T) {
+	tests := []struct {
+		pattern, s string
+		want       bool
+	}{
+		{"*", "", true},
+		{"*", "anything", true},
+		{"dynamodb:*", "dynamodb:query", true},
+		{"dynamodb:get*", "dynamodb:getitem", true},
+		{"dynamodb:get*", "dynamodb:query", false},
+		{"table/orders", "table/orders", true},
+		{"table/orders", "table/orders-archive", false},
+		{"table/orders*", "table/orders-archive", true},
+		{"table/*/index/*", "table/orders/index/by-date", true},
+		{"table/ord?rs", "table/orders", true},
+		{"table/ord?rs", "table/ordrs", false},
+		{"*orders*", "table/orders/index/x", true},
+		{"a*b*c", "aXbXbXc", true},
+		{"a*b*c", "aXbXb", false},
+	}
+	for _, tt := range tests {
+		if got := Glob(tt.pattern, tt.s); got != tt.want {
+			t.Errorf("Glob(%q, %q) = %v, want %v", tt.pattern, tt.s, got, tt.want)
+		}
+	}
+}
+
+func TestMatchesAction(t *testing.T) {
+	tests := []struct {
+		name   string
+		st     Statement
+		action string
+		want   bool
+	}{
+		{"exact", Statement{Action: Strings{"dynamodb:Query"}}, "dynamodb:Query", true},
+		{"case insensitive", Statement{Action: Strings{"DynamoDB:query"}}, "dynamodb:Query", true},
+		{"service wildcard", Statement{Action: Strings{"dynamodb:*"}}, "dynamodb:Scan", true},
+		{"everything", Statement{Action: Strings{"*"}}, "dynamodb:Scan", true},
+		{"other service", Statement{Action: Strings{"s3:*"}}, "dynamodb:Scan", false},
+		{"not action excludes", Statement{NotAction: Strings{"dynamodb:Scan"}}, "dynamodb:Scan", false},
+		{"not action allows the rest", Statement{NotAction: Strings{"dynamodb:Scan"}}, "dynamodb:Query", true},
+		{"no actions", Statement{}, "dynamodb:Query", false},
+	}
+	for _, tt := range tests {
+		if got := tt.st.MatchesAction(tt.action); got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestMatchesTable(t *testing.T) {
+	full := Table{Name: "orders", Region: "us-east-1", Account: "111122223333"}
+	nameOnly := Table{Name: "orders"}
+
+	tests := []struct {
+		name     string
+		resource string
+		table    Table
+		want     bool
+	}{
+		{"star", "*", full, true},
+		{"exact arn", "arn:aws:dynamodb:us-east-1:111122223333:table/orders", full, true},
+		{"other table", "arn:aws:dynamodb:us-east-1:111122223333:table/users", full, false},
+		{"other region", "arn:aws:dynamodb:eu-west-1:111122223333:table/orders", full, false},
+		{"other account", "arn:aws:dynamodb:us-east-1:999999999999:table/orders", full, false},
+		{"any region and account", "arn:aws:dynamodb:*:*:table/orders", full, true},
+		{"all tables", "arn:aws:dynamodb:us-east-1:111122223333:table/*", full, true},
+		{"short wildcard arn", "arn:aws:dynamodb:*", full, true},
+		{"other service", "arn:aws:s3:::orders", full, false},
+		{"index only", "arn:aws:dynamodb:us-east-1:111122223333:table/orders/index/*", full, false},
+		{"unknown region still matches", "arn:aws:dynamodb:eu-west-1:999999999999:table/orders", nameOnly, true},
+		{"policy variable in arn", "arn:aws:dynamodb:us-east-1:${aws:PrincipalAccount}:table/orders", full, true},
+		{"not an arn", "orders", full, false},
+	}
+	for _, tt := range tests {
+		st := Statement{Resource: Strings{tt.resource}}
+		if got := st.MatchesTable(tt.table); got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestMatchesIndex(t *testing.T) {
+	table := Table{Name: "orders"}
+	tests := []struct {
+		resource string
+		want     bool
+	}{
+		{"arn:aws:dynamodb:*:*:table/orders/index/*", true},
+		{"arn:aws:dynamodb:*:*:table/orders/*", true},
+		{"arn:aws:dynamodb:*:*:table/orders", false},
+		{"arn:aws:dynamodb:*:*:table/*", true},
+		{"*", true},
+	}
+	for _, tt := range tests {
+		st := Statement{Resource: Strings{tt.resource}}
+		if got := st.MatchesIndex(table); got != tt.want {
+			t.Errorf("MatchesIndex(%q) = %v, want %v", tt.resource, got, tt.want)
+		}
+	}
+}
+
+func TestNotResource(t *testing.T) {
+	table := Table{Name: "orders"}
+	other := Statement{NotResource: Strings{"arn:aws:dynamodb:*:*:table/users"}}
+	if !other.MatchesTable(table) {
+		t.Error("NotResource on another table should still cover orders")
+	}
+	same := Statement{NotResource: Strings{"arn:aws:dynamodb:*:*:table/orders"}}
+	if same.MatchesTable(table) {
+		t.Error("NotResource on orders should not cover orders")
+	}
+}
