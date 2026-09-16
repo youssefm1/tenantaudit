@@ -1,0 +1,104 @@
+{
+  "RoleDetailList": [
+    {
+      "Path": "/",
+      "RoleName": "report-export-role",
+      "Arn": "arn:aws:iam::111122223333:role/report-export-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "export",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "dynamodb:Query",
+                "Resource": "arn:aws:dynamodb:us-east-1:111122223333:table/orders"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    },
+    {
+      "Path": "/",
+      "RoleName": "api-read-role",
+      "Arn": "arn:aws:iam::111122223333:role/api-read-role",
+      "RolePolicyList": [],
+      "AttachedManagedPolicies": [
+        {
+          "PolicyName": "orders-tenant-read",
+          "PolicyArn": "arn:aws:iam::111122223333:policy/orders-tenant-read"
+        }
+      ]
+    },
+    {
+      "Path": "/",
+      "RoleName": "admin-tools-role",
+      "Arn": "arn:aws:iam::111122223333:role/admin-tools-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "encoded",
+          "PolicyDocument": "%7B%22Statement%22%3A%5B%7B%22Effect%22%3A%22Allow%22%2C%22Action%22%3A%22dynamodb%3AScan%22%2C%22Resource%22%3A%22%2A%22%7D%5D%7D"
+        }
+      ],
+      "AttachedManagedPolicies": [
+        {
+          "PolicyName": "ReadOnlyAccess",
+          "PolicyArn": "arn:aws:iam::aws:policy/ReadOnlyAccess"
+        }
+      ]
+    },
+    {
+      "Path": "/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/",
+      "RoleName": "AWSServiceRoleForApplicationAutoScaling_DynamoDBTable",
+      "Arn": "arn:aws:iam::111122223333:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable",
+      "RolePolicyList": [],
+      "AttachedManagedPolicies": []
+    }
+  ],
+  "Policies": [
+    {
+      "PolicyName": "orders-tenant-read",
+      "Arn": "arn:aws:iam::111122223333:policy/orders-tenant-read",
+      "DefaultVersionId": "v2",
+      "PolicyVersionList": [
+        {
+          "VersionId": "v2",
+          "IsDefaultVersion": true,
+          "Document": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "TenantRead",
+                "Effect": "Allow",
+                "Action": ["dynamodb:GetItem", "dynamodb:Query"],
+                "Resource": "arn:aws:dynamodb:us-east-1:111122223333:table/orders",
+                "Condition": {
+                  "ForAllValues:StringEquals": {
+                    "dynamodb:LeadingKeys": ["org#${aws:PrincipalTag/org}"]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "VersionId": "v1",
+          "IsDefaultVersion": false,
+          "Document": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "dynamodb:*",
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
