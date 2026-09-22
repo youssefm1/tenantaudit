@@ -1,0 +1,182 @@
+{
+  "RoleDetailList": [
+    {
+      "Path": "/",
+      "RoleName": "api-read-role",
+      "Arn": "arn:aws:iam::111122223333:role/api-read-role",
+      "RolePolicyList": [],
+      "AttachedManagedPolicies": [
+        {"PolicyName": "orders-tenant-read", "PolicyArn": "arn:aws:iam::111122223333:policy/orders-tenant-read"}
+      ]
+    },
+    {
+      "Path": "/",
+      "RoleName": "api-write-role",
+      "Arn": "arn:aws:iam::111122223333:role/api-write-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "tenant-write",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "TenantWrite",
+                "Effect": "Allow",
+                "Action": "dynamodb:*",
+                "Resource": [
+                  "arn:aws:dynamodb:us-east-1:111122223333:table/orders",
+                  "arn:aws:dynamodb:us-east-1:111122223333:table/orders/index/*"
+                ],
+                "Condition": {
+                  "ForAllValues:StringLike": {"dynamodb:LeadingKeys": ["org#${aws:PrincipalTag/org}#*"]},
+                  "Null": {"dynamodb:LeadingKeys": "false"}
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    },
+    {
+      "Path": "/",
+      "RoleName": "report-export-role",
+      "Arn": "arn:aws:iam::111122223333:role/report-export-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "export",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": ["dynamodb:Query", "dynamodb:BatchGetItem"],
+                "Resource": "arn:aws:dynamodb:*:*:table/orders*"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    },
+    {
+      "Path": "/",
+      "RoleName": "legacy-sync-role",
+      "Arn": "arn:aws:iam::111122223333:role/legacy-sync-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "sync",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "LooksScoped",
+                "Effect": "Allow",
+                "Action": ["dynamodb:Query", "dynamodb:Scan"],
+                "Resource": "arn:aws:dynamodb:us-east-1:111122223333:table/orders",
+                "Condition": {
+                  "ForAllValues:StringEquals": {"dynamodb:LeadingKeys": ["org#${aws:PrincipalTag/org}"]}
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    },
+    {
+      "Path": "/",
+      "RoleName": "admin-tools-role",
+      "Arn": "arn:aws:iam::111122223333:role/admin-tools-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "admin",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    },
+    {
+      "Path": "/",
+      "RoleName": "support-role",
+      "Arn": "arn:aws:iam::111122223333:role/support-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "support",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {"Effect": "Allow", "Action": "dynamodb:*", "Resource": "*"},
+              {"Effect": "Deny", "Action": "dynamodb:*", "Resource": "arn:aws:dynamodb:*:*:table/orders*"}
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    },
+    {
+      "Path": "/",
+      "RoleName": "users-service-role",
+      "Arn": "arn:aws:iam::111122223333:role/users-service-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "users-table",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {"Effect": "Allow", "Action": "dynamodb:*", "Resource": "arn:aws:dynamodb:us-east-1:111122223333:table/users"}
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    },
+    {
+      "Path": "/",
+      "RoleName": "eu-replica-role",
+      "Arn": "arn:aws:iam::111122223333:role/eu-replica-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "eu-orders",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {"Effect": "Allow", "Action": "dynamodb:Scan", "Resource": "arn:aws:dynamodb:eu-west-1:111122223333:table/orders"}
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    }
+  ],
+  "Policies": [
+    {
+      "PolicyName": "orders-tenant-read",
+      "Arn": "arn:aws:iam::111122223333:policy/orders-tenant-read",
+      "DefaultVersionId": "v1",
+      "PolicyVersionList": [
+        {
+          "VersionId": "v1",
+          "IsDefaultVersion": true,
+          "Document": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "TenantRead",
+                "Effect": "Allow",
+                "Action": ["dynamodb:GetItem", "dynamodb:Query"],
+                "Resource": "arn:aws:dynamodb:us-east-1:111122223333:table/orders",
+                "Condition": {
+                  "ForAllValues:StringEquals": {"dynamodb:LeadingKeys": ["org#${aws:PrincipalTag/org}"]}
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
