@@ -11,7 +11,8 @@ bug in the code using it can return another tenant's data.
 a table without that guard.
 
 ```
-$ tenantaudit --table orders --tenant-key-prefix "org#" --file testdata/account.json
+$ tenantaudit --table arn:aws:dynamodb:us-east-1:111122223333:table/orders \
+    --tenant-key-prefix "org#" --file testdata/account.json
 orders
   ✗ admin-tools-role    scan      Scan                                   Scan reads every tenant                                  (admin, statement 1)
   ✗ legacy-sync-role    scan      Scan                                   Scan is not limited by LeadingKeys without a Null check  (sync, LooksScoped)
