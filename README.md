@@ -11,14 +11,15 @@ bug in the code using it can return another tenant's data.
 a table without that guard.
 
 ```
-$ tenantaudit --table orders --tenant-key-prefix "org#"
+$ tenantaudit --table orders --tenant-key-prefix "org#" --file testdata/account.json
 orders
-  ✗ admin-tools-role    scan      Scan                 Scan reads every tenant                                  (admin, statement 1)
-  ✗ legacy-sync-role    scan      Scan                 Scan is not limited by LeadingKeys without a Null check  (sync, LooksScoped)
-  ✗ report-export-role  unscoped  BatchGetItem, Query  no tenant condition                                      (export, statement 1)
-  ✓ api-read-role       scoped    GetItem, Query       scoped by LeadingKeys                                    (orders-tenant-read, TenantRead)
+  ✗ admin-tools-role    scan      Scan                                   Scan reads every tenant                                  (admin, statement 1)
+  ✗ legacy-sync-role    scan      Scan                                   Scan is not limited by LeadingKeys without a Null check  (sync, LooksScoped)
+  ✗ report-export-role  unscoped  BatchGetItem, Query                    no tenant condition                                      (export, statement 1)
+  ✓ api-read-role       scoped    GetItem, Query                         scoped by LeadingKeys                                    (orders-tenant-read, TenantRead)
+  ✓ api-write-role      scoped    GetItem, BatchGetItem, Query +10 more  scoped by LeadingKeys                                    (tenant-write, TenantWrite)
 
-3 of 4 roles with access can reach other tenants' items
+3 of 5 roles with access can reach other tenants' items
 ```
 
 ## Install
