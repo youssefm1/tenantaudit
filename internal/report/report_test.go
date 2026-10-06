@@ -86,3 +86,21 @@ func TestJSONEmptyListsAreNotNull(t *testing.T) {
 		t.Errorf("empty report should use [] not null:\n%s", buf.String())
 	}
 }
+
+func TestJSONAll(t *testing.T) {
+	var buf bytes.Buffer
+	reports := []Report{sample(), New("users", nil, nil)}
+	if err := JSONAll(&buf, reports); err != nil {
+		t.Fatal(err)
+	}
+	var out []jsonReport
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 2 || out[0].Table != "orders" || out[1].Table != "users" {
+		t.Fatalf("got %+v", out)
+	}
+	if out[0].Summary.CrossTenant != 2 || len(out[1].Roles) != 0 {
+		t.Errorf("got %+v", out)
+	}
+}

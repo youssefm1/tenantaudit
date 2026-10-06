@@ -128,6 +128,25 @@ type jsonGrant struct {
 
 // JSON writes the full result, including grants below each role's level.
 func (r Report) JSON(w io.Writer) error {
+	return encode(w, r.json())
+}
+
+// JSONAll writes several reports as one array, in the order given.
+func JSONAll(w io.Writer, reports []Report) error {
+	out := make([]jsonReport, 0, len(reports))
+	for _, r := range reports {
+		out = append(out, r.json())
+	}
+	return encode(w, out)
+}
+
+func encode(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
+func (r Report) json() jsonReport {
 	out := jsonReport{
 		Table:    r.Table,
 		Summary:  jsonSummary{RolesChecked: r.RolesChecked, WithAccess: len(r.Results), CrossTenant: r.CrossTenant()},
@@ -146,7 +165,5 @@ func (r Report) JSON(w io.Writer) error {
 		}
 		out.Roles = append(out.Roles, role)
 	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	return out
 }
