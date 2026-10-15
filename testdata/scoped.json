@@ -1,0 +1,36 @@
+{
+  "RoleDetailList": [
+    {
+      "Path": "/",
+      "RoleName": "api-role",
+      "Arn": "arn:aws:iam::111122223333:role/api-role",
+      "RolePolicyList": [
+        {
+          "PolicyName": "tables",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "OrdersByTenant",
+                "Effect": "Allow",
+                "Action": ["dynamodb:GetItem", "dynamodb:Query"],
+                "Resource": "arn:aws:dynamodb:us-east-1:111122223333:table/orders",
+                "Condition": {
+                  "ForAllValues:StringEquals": {"dynamodb:LeadingKeys": ["org#${aws:PrincipalTag/org}"]}
+                }
+              },
+              {
+                "Sid": "UsersAnyKey",
+                "Effect": "Allow",
+                "Action": "dynamodb:GetItem",
+                "Resource": "arn:aws:dynamodb:us-east-1:111122223333:table/users"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    }
+  ],
+  "Policies": []
+}

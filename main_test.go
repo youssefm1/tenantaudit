@@ -88,6 +88,75 @@ func TestRunLevels(t *testing.T) {
 	}
 }
 
+func TestRunSeveralTables(t *testing.T) {
+	code, stdout, stderr := runCLI(t,
+		"--table", "arn:aws:dynamodb:us-east-1:111122223333:table/orders",
+		"--table", "arn:aws:dynamodb:us-east-1:111122223333:table/users",
+		"--file", "testdata/account.json", "--tenant-key-prefix", "org#")
+	if code != exitFindings || stderr != "" {
+		t.Errorf("code = %d, stderr = %q", code, stderr)
+	}
+
+	const golden = "testdata/orders-users.golden"
+	if *update {
+		if err := os.WriteFile(golden, []byte(stdout), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout != string(want) {
+		t.Errorf("output changed, rerun with -update if intended\ngot:\n%s\nwant:\n%s", stdout, want)
+	}
+}
+
+func TestRunSeveralTablesJSON(t *testing.T) {
+	_, stdout, _ := runCLI(t, "--table", "orders", "--table", "users", "--region", "us-east-1",
+		"--file", "testdata/account.json", "--format", "json")
+
+	var out []struct {
+		Table string `json:"table"`
+		Roles []struct {
+			Role string `json:"role"`
+		} `json:"roles"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("%v\n%s", err, stdout)
+	}
+	if len(out) != 2 || out[0].Table != "orders" || out[1].Table != "users" {
+		t.Fatalf("tables = %+v", out)
+	}
+	// users-service-role only reaches the users table.
+	for i, want := range []bool{false, true} {
+		found := false
+		for _, r := range out[i].Roles {
+			found = found || r.Role == "users-service-role"
+		}
+		if found != want {
+			t.Errorf("%s: users-service-role found = %v, want %v", out[i].Table, found, want)
+		}
+	}
+}
+
+func TestRunSeveralTablesExitCode(t *testing.T) {
+	// One clean table does not hide findings on the other, whatever the order.
+	clean := "arn:aws:dynamodb:us-east-1:111122223333:table/orders"
+	for _, args := range [][]string{
+		{"--table", clean, "--table", "users"},
+		{"--table", "users", "--table", clean},
+	} {
+		args = append(args, "--file", "testdata/scoped.json")
+		if code, stdout, _ := runCLI(t, args...); code != exitFindings {
+			t.Errorf("%v: code = %d\n%s", args, code, stdout)
+		}
+	}
+	if code, stdout, _ := runCLI(t, "--table", clean, "--file", "testdata/scoped.json"); code != exitOK {
+		t.Errorf("clean table: code = %d\n%s", code, stdout)
+	}
+}
+
 func TestRunTableNameMatchesAnyRegion(t *testing.T) {
 	// With only a name there is no region to compare, so the eu-west-1
 	// grant counts too.
@@ -121,6 +190,7 @@ func TestRunUsageErrors(t *testing.T) {
 		{"--table", "orders", "--format", "xml", "--file", "testdata/account.json"},
 		{"--table", "arn:aws:s3:::orders", "--file", "testdata/account.json"},
 		{"--table", "orders", "--file", "testdata/missing.json"},
+		{"--table", "orders", "--table", "arn:aws:s3:::users", "--file", "testdata/account.json"},
 		{"--table", "orders", "extra", "--file", "testdata/account.json"},
 		{"--nope"},
 	}
