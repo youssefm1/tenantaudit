@@ -46,8 +46,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("tenantaudit", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var tableArgs tableFlags
-	fs.Var(&tableArgs, "table", "table `name or ARN`, repeat to audit several (required)")
-	prefix := fs.String("tenant-key-prefix", "", "start of every tenant partition key, e.g. org#")
+	fs.Var(&tableArgs, "table", "table `name or ARN`, repeat to audit several, add =prefix to set that table's tenant key prefix (required)")
+	prefix := fs.String("tenant-key-prefix", "", "start of every tenant partition key, e.g. org#, for tables that don't set their own")
 	file := fs.String("file", "", "read roles from a `path` saved with aws iam get-account-authorization-details, instead of calling AWS")
 	region := fs.String("region", "", "table region, used to match policy ARNs")
 	account := fs.String("account", "", "table account ID, used to match policy ARNs")
@@ -69,7 +69,15 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 
 	tables := make([]policy.Table, 0, len(tableArgs))
+	prefixes := make([]string, 0, len(tableArgs))
 	for _, arg := range tableArgs {
+		// "orders=org#" gives the table its own prefix. Table names and
+		// ARNs can't contain =, so the first one always starts the prefix.
+		arg, own, ok := strings.Cut(arg, "=")
+		if !ok {
+			own = *prefix
+		}
+		prefixes = append(prefixes, own)
 		table, err := parseTable(arg)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -98,10 +106,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 	// The roles are loaded once and checked against each table.
 	reports := make([]report.Report, 0, len(tables))
-	for _, table := range tables {
+	for i, table := range tables {
+		opts := audit.Options{TenantKeyPrefix: prefixes[i]}
 		results := make([]audit.Result, 0, len(acct.Roles))
 		for _, role := range acct.Roles {
-			results = append(results, audit.Check(role, table, audit.Options{TenantKeyPrefix: *prefix}))
+			results = append(results, audit.Check(role, table, opts))
 		}
 		reports = append(reports, report.New(table.Name, results, acct.Warnings))
 	}

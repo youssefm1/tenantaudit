@@ -140,6 +140,35 @@ func TestRunSeveralTablesJSON(t *testing.T) {
 	}
 }
 
+func TestRunPrefixPerTable(t *testing.T) {
+	const orders = "arn:aws:dynamodb:us-east-1:111122223333:table/orders"
+	const off = "not to the"
+
+	// The orders policy scopes to org# keys, so a user# prefix is noted.
+	_, stdout, _ := runCLI(t, "--table", orders+"=user#", "--file", "testdata/scoped.json")
+	if !strings.Contains(stdout, off+" user# prefix") {
+		t.Errorf("own prefix not applied:\n%s", stdout)
+	}
+
+	// A table's own prefix wins over --tenant-key-prefix.
+	_, stdout, _ = runCLI(t, "--table", orders+"=org#", "--tenant-key-prefix", "user#", "--file", "testdata/scoped.json")
+	if strings.Contains(stdout, off) {
+		t.Errorf("own prefix should win:\n%s", stdout)
+	}
+
+	// Tables without one fall back to --tenant-key-prefix.
+	_, stdout, _ = runCLI(t, "--table", orders, "--tenant-key-prefix", "user#", "--file", "testdata/scoped.json")
+	if !strings.Contains(stdout, off+" user# prefix") {
+		t.Errorf("fallback prefix not applied:\n%s", stdout)
+	}
+
+	// An empty prefix turns the check off for that table.
+	_, stdout, _ = runCLI(t, "--table", orders+"=", "--tenant-key-prefix", "user#", "--file", "testdata/scoped.json")
+	if strings.Contains(stdout, off) || !strings.HasPrefix(stdout, "orders\n") {
+		t.Errorf("empty prefix should disable the check:\n%s", stdout)
+	}
+}
+
 func TestRunSeveralTablesExitCode(t *testing.T) {
 	// One clean table does not hide findings on the other, whatever the order.
 	clean := "arn:aws:dynamodb:us-east-1:111122223333:table/orders"
