@@ -50,16 +50,29 @@ tenantaudit --table orders --file account.json
 
 There is a sample export in `testdata/account.json` if you want to try it.
 
+Several tables in one run. The roles are loaded once and each table gets its
+own section:
+
+```
+tenantaudit --table orders --table users
+```
+
+If the tables use different key prefixes, put the prefix after the table:
+
+```
+tenantaudit --table orders=org# --table users=user#
+```
+
 | Flag | What it does |
 |---|---|
-| `--table` | Table name or ARN. Required. |
-| `--tenant-key-prefix` | Start of every tenant partition key, e.g. `org#`. Flags `LeadingKeys` wildcards like `org#*` that match every tenant, and notes any pattern that doesn't use the prefix. |
+| `--table` | Table name or ARN. Required. Repeat it to audit several tables. `name=prefix` sets the tenant key prefix for that table. |
+| `--tenant-key-prefix` | Start of every tenant partition key, e.g. `org#`, for tables that don't set their own. Flags `LeadingKeys` wildcards like `org#*` that match every tenant, and notes any pattern that doesn't use the prefix. |
 | `--file` | Read roles from a saved export instead of calling AWS. |
 | `--region`, `--account` | Where the table lives, so policy ARNs for other regions or accounts are not matched. Filled in from your AWS config when left out. |
-| `--format` | `text` or `json`. |
+| `--format` | `text` or `json`. With several tables the JSON is an array with one report per table. |
 
 Exit code is `0` when every role with access is scoped, `1` when at least one
-is not, and `2` when the audit could not run. That makes it usable as a CI check.
+is not on any of the tables, and `2` when the audit could not run. That makes it usable as a CI check.
 
 ## How a role is graded
 
