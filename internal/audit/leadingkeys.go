@@ -16,6 +16,9 @@ type keyScope struct {
 	present bool
 	// patterns are the allowed partition key values or patterns.
 	patterns []string
+	// globs are the patterns that came from StringLike, where * and ? are
+	// wildcards. Under StringEquals they are plain characters.
+	globs []string
 	// anyValue is true when the only restriction uses ForAnyValue, which
 	// passes when a single key in a batch request matches.
 	anyValue bool
@@ -27,7 +30,7 @@ type keyScope struct {
 // leadingKeys reads the dynamodb:LeadingKeys restrictions on a statement.
 func leadingKeys(conds policy.Conditions) keyScope {
 	var scope keyScope
-	var forAll, forAny []string
+	var forAll, forAny, globAll, globAny []string
 
 	for op, keys := range conds {
 		modifier, base := splitOperator(op)
@@ -43,10 +46,17 @@ func leadingKeys(conds policy.Conditions) keyScope {
 					}
 				}
 			case isStringMatch(base):
+				like := base == "stringlike"
 				if modifier == "foranyvalue" {
 					forAny = append(forAny, values...)
+					if like {
+						globAny = append(globAny, values...)
+					}
 				} else {
 					forAll = append(forAll, values...)
+					if like {
+						globAll = append(globAll, values...)
+					}
 				}
 			}
 		}
@@ -56,10 +66,12 @@ func leadingKeys(conds policy.Conditions) keyScope {
 	case len(forAll) > 0:
 		scope.present = true
 		scope.patterns = forAll
+		scope.globs = globAll
 	case len(forAny) > 0:
 		scope.present = true
 		scope.anyValue = true
 		scope.patterns = forAny
+		scope.globs = globAny
 	}
 	return scope
 }

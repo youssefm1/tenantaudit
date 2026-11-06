@@ -40,7 +40,12 @@ func TestLeadingKeys(t *testing.T) {
 		{
 			name: "string like, mixed case key and operator",
 			json: `{"forallvalues:stringlike": {"DynamoDB:leadingKeys": "org#42#*"}}`,
-			want: keyScope{present: true, patterns: []string{"org#42#*"}},
+			want: keyScope{present: true, patterns: []string{"org#42#*"}, globs: []string{"org#42#*"}},
+		},
+		{
+			name: "star under string equals is not a wildcard",
+			json: `{"ForAllValues:StringEquals": {"dynamodb:LeadingKeys": ["org#*"]}}`,
+			want: keyScope{present: true, patterns: []string{"org#*"}},
 		},
 		{
 			name: "with null check",
