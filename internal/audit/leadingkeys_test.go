@@ -93,6 +93,33 @@ func TestMatchesEverything(t *testing.T) {
 	}
 }
 
+func TestSpansTenants(t *testing.T) {
+	tests := []struct {
+		pattern string
+		want    bool
+	}{
+		{"org#*", true},
+		{"org*", true},
+		{"org#??", true},
+		{"org#42", false},
+		{"org#42#*", false},
+		{"org#${aws:PrincipalTag/org}", false},
+		{"org#${aws:PrincipalTag/org}#*", false},
+		{"user#*", false},
+	}
+	for _, tt := range tests {
+		k := keyScope{patterns: []string{tt.pattern}, globs: []string{tt.pattern}}
+		if got := k.spansTenants("org#"); got != tt.want {
+			t.Errorf("spansTenants(%q) = %v, want %v", tt.pattern, got, tt.want)
+		}
+	}
+
+	// Under StringEquals the star is a literal character.
+	if (keyScope{patterns: []string{"org#*"}}).spansTenants("org#") {
+		t.Error("a StringEquals pattern is not a wildcard")
+	}
+}
+
 func TestUsesPrefix(t *testing.T) {
 	k := keyScope{patterns: []string{"org#${aws:PrincipalTag/org}", "org#shared"}}
 	if !k.usesPrefix("org#") {

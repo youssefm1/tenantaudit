@@ -86,6 +86,18 @@ func (k keyScope) matchesEverything() bool {
 	return false
 }
 
+// spansTenants reports whether a wildcard pattern such as org#* matches the
+// keys of unrelated tenants. A pattern that pins the tenant, like org#42#* or
+// org#${aws:PrincipalTag/org}#*, matches neither made-up tenant.
+func (k keyScope) spansTenants(prefix string) bool {
+	for _, p := range k.globs {
+		if policy.Glob(p, prefix+"a1") && policy.Glob(p, prefix+"b2") {
+			return true
+		}
+	}
+	return false
+}
+
 // usesPrefix reports whether every pattern starts with the tenant prefix.
 func (k keyScope) usesPrefix(prefix string) bool {
 	for _, p := range k.patterns {

@@ -168,6 +168,8 @@ func classify(scope keyScope, opts Options) (Level, string) {
 		return Unscoped, "no tenant condition"
 	case scope.matchesEverything():
 		return Unscoped, "LeadingKeys allows every key"
+	case opts.TenantKeyPrefix != "" && scope.spansTenants(opts.TenantKeyPrefix):
+		return Unscoped, fmt.Sprintf("LeadingKeys wildcard matches every %s key", opts.TenantKeyPrefix)
 	case scope.anyValue:
 		return Unscoped, "ForAnyValue passes when one key in a batch matches"
 	case opts.TenantKeyPrefix != "" && !scope.usesPrefix(opts.TenantKeyPrefix):

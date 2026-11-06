@@ -190,3 +190,28 @@ func TestCheckTenantPrefix(t *testing.T) {
 		t.Errorf("note = %q", res.Grants[0].Note)
 	}
 }
+
+func TestCheckWildcardAfterPrefix(t *testing.T) {
+	stmt := func(op, pattern string) string {
+		return `{"Statement":[{
+			"Effect":"Allow","Action":"dynamodb:Query","Resource":"` + ordersARN + `",
+			"Condition":{"ForAllValues:` + op + `":{"dynamodb:LeadingKeys":["` + pattern + `"]}}
+		}]}`
+	}
+	opts := Options{TenantKeyPrefix: "org#"}
+
+	res := Check(role(t, stmt("StringLike", "org#*")), orders, opts)
+	if res.Level != Unscoped || res.Grants[0].Note != "LeadingKeys wildcard matches every org# key" {
+		t.Errorf("org#* = %+v", res)
+	}
+
+	for _, pattern := range []string{"org#42#*", "org#${aws:PrincipalTag/org}#*"} {
+		if res := Check(role(t, stmt("StringLike", pattern)), orders, opts); res.Level != Scoped {
+			t.Errorf("%s: level = %v, want scoped", pattern, res.Level)
+		}
+	}
+
+	if res := Check(role(t, stmt("StringEquals", "org#*")), orders, opts); res.Level != Scoped {
+		t.Errorf("StringEquals org#*: level = %v, want scoped", res.Level)
+	}
+}
