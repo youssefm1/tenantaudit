@@ -53,7 +53,7 @@ There is a sample export in `testdata/account.json` if you want to try it.
 | Flag | What it does |
 |---|---|
 | `--table` | Table name or ARN. Required. |
-| `--tenant-key-prefix` | Start of every tenant partition key, e.g. `org#`. Notes any `LeadingKeys` pattern that doesn't use it. |
+| `--tenant-key-prefix` | Start of every tenant partition key, e.g. `org#`. Flags `LeadingKeys` wildcards like `org#*` that match every tenant, and notes any pattern that doesn't use the prefix. |
 | `--file` | Read roles from a saved export instead of calling AWS. |
 | `--region`, `--account` | Where the table lives, so policy ARNs for other regions or accounts are not matched. Filled in from your AWS config when left out. |
 | `--format` | `text` or `json`. |
@@ -66,7 +66,7 @@ is not, and `2` when the audit could not run. That makes it usable as a CI check
 | Level | Meaning |
 |---|---|
 | `scan` | The role can `Scan`. A scan returns every tenant's items. |
-| `unscoped` | The role can use key-based actions like `Query` or `GetItem` with no `LeadingKeys` condition, a condition that allows `*`, or one that uses `ForAnyValue`. |
+| `unscoped` | The role can use key-based actions like `Query` or `GetItem` with no `LeadingKeys` condition, a condition that allows `*` or every key under the tenant prefix, or one that uses `ForAnyValue`. |
 | `scoped` | Every statement that grants access is limited by `LeadingKeys`. |
 
 A role gets its worst level. Roles with no item access to the table are left out.
