@@ -58,7 +58,26 @@ func (s Statement) MatchesTable(t Table) bool {
 // MatchesIndex reports whether the statement applies to at least one index
 // on the table.
 func (s Statement) MatchesIndex(t Table) bool {
-	// Any concrete index name works for a pattern like table/x/index/*.
+	if s.MatchesEveryIndex(t) {
+		return true
+	}
+	if len(s.NotResource) > 0 {
+		return false
+	}
+	// A resource can also name one index, like table/x/index/by-status.
+	// The export doesn't list indexes, so assume it exists.
+	for _, p := range s.Resource {
+		if head, _, ok := strings.Cut(p, "/index/"); ok && matchARN(head, t, "table/"+t.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// MatchesEveryIndex reports whether the statement applies to any index the
+// table could have, as table/x/index/* does.
+func (s Statement) MatchesEveryIndex(t Table) bool {
+	// A made-up index name only matches patterns that don't name one.
 	return s.matchesResource(t, "table/"+t.Name+"/index/_")
 }
 
