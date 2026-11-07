@@ -192,7 +192,8 @@ func denied(role Role, table policy.Table, action string, onTable bool) bool {
 			if onTable && st.MatchesTable(table) {
 				return true
 			}
-			if !onTable && st.MatchesIndex(table) {
+			// A Deny on one named index leaves the others reachable.
+			if !onTable && st.MatchesEveryIndex(table) {
 				return true
 			}
 		}

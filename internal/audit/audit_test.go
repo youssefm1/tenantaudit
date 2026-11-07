@@ -145,6 +145,37 @@ func TestCheckLevels(t *testing.T) {
 			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Query","Resource":"` + ordersARN + `/index/*"}]}`},
 			want: Unscoped,
 		},
+		{
+			name: "query on a named index",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Query","Resource":"` + ordersARN + `/index/by-status"}]}`},
+			want: Unscoped,
+		},
+		{
+			name: "scan on a named index",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/by-status"}]}`},
+			want: ScanAll,
+		},
+		{
+			name: "named index on another table",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Scan","Resource":"arn:aws:dynamodb:us-east-1:111122223333:table/users/index/by-status"}]}`},
+			want: NoAccess,
+		},
+		{
+			name: "deny on one index leaves the others",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/*"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/by-status"}]}`,
+			},
+			want: ScanAll,
+		},
+		{
+			name: "deny on every index",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/by-status"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/*"}]}`,
+			},
+			want: NoAccess,
+		},
 	}
 	for _, tt := range tests {
 		got := Check(role(t, tt.docs...), orders, Options{})
