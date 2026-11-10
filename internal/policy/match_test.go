@@ -125,6 +125,31 @@ func TestMatchesIndexNotResource(t *testing.T) {
 	}
 }
 
+func TestMatchesStream(t *testing.T) {
+	table := Table{Name: "orders"}
+	tests := []struct {
+		resource   string
+		any, every bool
+	}{
+		{"arn:aws:dynamodb:*:*:table/orders/stream/*", true, true},
+		{"arn:aws:dynamodb:*:*:table/orders/*", true, true},
+		{"*", true, true},
+		{"arn:aws:dynamodb:*:*:table/orders/stream/2026-01-05T10:00:00.000", true, false},
+		{"arn:aws:dynamodb:*:*:table/orders", false, false},
+		{"arn:aws:dynamodb:*:*:table/orders/index/*", false, false},
+		{"arn:aws:dynamodb:*:*:table/users/stream/*", false, false},
+	}
+	for _, tt := range tests {
+		st := Statement{Resource: Strings{tt.resource}}
+		if got := st.MatchesStream(table); got != tt.any {
+			t.Errorf("MatchesStream(%q) = %v, want %v", tt.resource, got, tt.any)
+		}
+		if got := st.MatchesEveryStream(table); got != tt.every {
+			t.Errorf("MatchesEveryStream(%q) = %v, want %v", tt.resource, got, tt.every)
+		}
+	}
+}
+
 func TestNotResource(t *testing.T) {
 	table := Table{Name: "orders"}
 	other := Statement{NotResource: Strings{"arn:aws:dynamodb:*:*:table/users"}}
