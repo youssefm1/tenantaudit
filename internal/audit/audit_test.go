@@ -108,7 +108,7 @@ func TestCheckLevels(t *testing.T) {
 		{
 			name: "deny removes scan",
 			docs: []string{
-				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:*","Resource":"` + ordersARN + `"}]}`,
+				`{"Statement":[{"Effect":"Allow","Action":["dynamodb:Query","dynamodb:Scan"],"Resource":"` + ordersARN + `"}]}`,
 				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:Scan","Resource":"*"}]}`,
 			},
 			want: Unscoped,
@@ -143,6 +143,32 @@ func TestCheckLevels(t *testing.T) {
 		{
 			name: "index only",
 			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Query","Resource":"` + ordersARN + `/index/*"}]}`},
+			want: Unscoped,
+		},
+		{
+			name: "export",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:ExportTableToPointInTime","Resource":"` + ordersARN + `"}]}`},
+			want: ScanAll,
+		},
+		{
+			name: "export slips past leading keys",
+			docs: []string{`{"Statement":[{
+				"Effect":"Allow","Action":"dynamodb:ExportTableToPointInTime","Resource":"` + ordersARN + `",
+				"Condition":{"ForAllValues:StringEquals":{"dynamodb:LeadingKeys":["org#1"]}}
+			}]}`},
+			want: ScanAll,
+		},
+		{
+			name: "export on an index only",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:ExportTableToPointInTime","Resource":"` + ordersARN + `/index/*"}]}`},
+			want: NoAccess,
+		},
+		{
+			name: "deny removes export",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":["dynamodb:Query","dynamodb:ExportTableToPointInTime"],"Resource":"` + ordersARN + `"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:Export*","Resource":"*"}]}`,
+			},
 			want: Unscoped,
 		},
 		{

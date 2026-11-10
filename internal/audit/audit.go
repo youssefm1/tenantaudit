@@ -70,7 +70,12 @@ type Options struct {
 	TenantKeyPrefix string
 }
 
-const scan = "dynamodb:Scan"
+// These read the whole table and send no partition key, so LeadingKeys
+// does not limit them.
+const (
+	scan   = "dynamodb:Scan"
+	export = "dynamodb:ExportTableToPointInTime"
+)
 
 // keyActions read or write items by partition key, so LeadingKeys applies.
 var keyActions = []string{
@@ -129,14 +134,22 @@ func Check(role Role, table policy.Table, opts Options) Result {
 				level, note := classify(scope, opts)
 				add(action, level, note)
 			}
-			if st.MatchesAction(scan) && !denied(role, table, scan, onTable) && !scope.requiresKey {
-				// Scan sends no partition key, and ForAllValues passes when
-				// the key is missing, so LeadingKeys alone does not stop it.
-				note := "Scan reads every tenant"
-				if scope.present {
-					note = "Scan is not limited by LeadingKeys without a Null check"
+			// These send no partition key, and ForAllValues passes when the
+			// key is missing, so LeadingKeys alone does not stop them.
+			whole := func(action string) {
+				if !st.MatchesAction(action) || denied(role, table, action, onTable) || scope.requiresKey {
+					return
 				}
-				add(scan, ScanAll, note)
+				note := "reads every tenant"
+				if scope.present {
+					note = "not limited by LeadingKeys without a Null check"
+				}
+				add(action, ScanAll, note)
+			}
+			whole(scan)
+			if onTable {
+				// An export is taken from the table, never from an index.
+				whole(export)
 			}
 
 			for _, g := range byNote {
