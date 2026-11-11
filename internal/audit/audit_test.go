@@ -117,9 +117,17 @@ func TestCheckLevels(t *testing.T) {
 			name: "deny removes everything",
 			docs: []string{
 				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:*","Resource":"*"}]}`,
-				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:*","Resource":"` + ordersARN + `"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:*","Resource":["` + ordersARN + `","` + ordersARN + `/*"]}]}`,
 			},
 			want: NoAccess,
+		},
+		{
+			name: "deny on the table leaves its stream",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:*","Resource":"*"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:*","Resource":"` + ordersARN + `"}]}`,
+			},
+			want: ScanAll,
 		},
 		{
 			name: "conditional deny is ignored",
@@ -170,6 +178,34 @@ func TestCheckLevels(t *testing.T) {
 				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:Export*","Resource":"*"}]}`,
 			},
 			want: Unscoped,
+		},
+		{
+			name: "stream reader",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":["dynamodb:GetRecords","dynamodb:GetShardIterator"],"Resource":"` + ordersARN + `/stream/*"}]}`},
+			want: ScanAll,
+		},
+		{
+			name: "stream of another table",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:GetRecords","Resource":"arn:aws:dynamodb:us-east-1:111122223333:table/users/stream/*"}]}`},
+			want: NoAccess,
+		},
+		{
+			name: "get records on the table arn is not a stream grant",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:GetRecords","Resource":"` + ordersARN + `"}]}`},
+			want: NoAccess,
+		},
+		{
+			name: "deny removes stream reads",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:GetRecords","Resource":"*"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:GetRecords","Resource":"` + ordersARN + `/stream/*"}]}`,
+			},
+			want: NoAccess,
+		},
+		{
+			name: "stream only grant gives no item access",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":["dynamodb:Query","dynamodb:Scan"],"Resource":"` + ordersARN + `/stream/*"}]}`},
+			want: NoAccess,
 		},
 		{
 			name: "query on a named index",
