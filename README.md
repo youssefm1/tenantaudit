@@ -14,11 +14,11 @@ a table without that guard.
 $ tenantaudit --table arn:aws:dynamodb:us-east-1:111122223333:table/orders \
     --tenant-key-prefix "org#" --file testdata/account.json
 orders
-  ✗ admin-tools-role    scan      Scan                                   Scan reads every tenant                                  (admin, statement 1)
-  ✗ legacy-sync-role    scan      Scan                                   Scan is not limited by LeadingKeys without a Null check  (sync, LooksScoped)
-  ✗ report-export-role  unscoped  BatchGetItem, Query                    no tenant condition                                      (export, statement 1)
-  ✓ api-read-role       scoped    GetItem, Query                         scoped by LeadingKeys                                    (orders-tenant-read, TenantRead)
-  ✓ api-write-role      scoped    GetItem, BatchGetItem, Query +10 more  scoped by LeadingKeys                                    (tenant-write, TenantWrite)
+  ✗ admin-tools-role    scan      Scan, ExportTableToPointInTime, GetRecords  reads every tenant                               (admin, statement 1)
+  ✗ legacy-sync-role    scan      Scan                                        not limited by LeadingKeys without a Null check  (sync, LooksScoped)
+  ✗ report-export-role  unscoped  BatchGetItem, Query                         no tenant condition                              (export, statement 1)
+  ✓ api-read-role       scoped    GetItem, Query                              scoped by LeadingKeys                            (orders-tenant-read, TenantRead)
+  ✓ api-write-role      scoped    GetItem, BatchGetItem, Query +10 more       scoped by LeadingKeys                            (tenant-write, TenantWrite)
 
 3 of 5 roles with access can reach other tenants' items
 ```
@@ -65,7 +65,7 @@ is not, and `2` when the audit could not run. That makes it usable as a CI check
 
 | Level | Meaning |
 |---|---|
-| `scan` | The role can `Scan`. A scan returns every tenant's items. |
+| `scan` | The role can read the whole table: `Scan`, `ExportTableToPointInTime`, or `GetRecords` on the table's stream. None of these send a partition key, so they return every tenant's items. |
 | `unscoped` | The role can use key-based actions like `Query` or `GetItem` with no `LeadingKeys` condition, a condition that allows `*` or every key under the tenant prefix, or one that uses `ForAnyValue`. |
 | `scoped` | Every statement that grants access is limited by `LeadingKeys`. |
 
@@ -75,6 +75,7 @@ One case is easy to miss. `ForAllValues` conditions pass when the key is absent
 from the request, and `Scan` never sends a partition key. So a statement that
 allows `Scan` under a `LeadingKeys` condition still allows a full scan, unless it
 also has `"Null": {"dynamodb:LeadingKeys": "false"}`. This is flagged as `scan`.
+The same goes for exports and stream reads.
 
 ## Limits
 
@@ -84,6 +85,7 @@ This reads identity policies on roles. It does not evaluate:
 - `Deny` statements that have conditions (they are ignored, so the result can be stricter than reality)
 - IAM users and groups
 - PartiQL statements that run as full scans
+- backups and restores, which copy the table without reading it directly
 - `dynamodb:Attributes` and other fine-grained conditions
 
 It also can't see tenant checks done in application code. If your services
