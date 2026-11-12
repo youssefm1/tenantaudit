@@ -108,7 +108,7 @@ func TestCheckLevels(t *testing.T) {
 		{
 			name: "deny removes scan",
 			docs: []string{
-				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:*","Resource":"` + ordersARN + `"}]}`,
+				`{"Statement":[{"Effect":"Allow","Action":["dynamodb:Query","dynamodb:Scan"],"Resource":"` + ordersARN + `"}]}`,
 				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:Scan","Resource":"*"}]}`,
 			},
 			want: Unscoped,
@@ -117,9 +117,17 @@ func TestCheckLevels(t *testing.T) {
 			name: "deny removes everything",
 			docs: []string{
 				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:*","Resource":"*"}]}`,
-				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:*","Resource":"` + ordersARN + `"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:*","Resource":["` + ordersARN + `","` + ordersARN + `/*"]}]}`,
 			},
 			want: NoAccess,
+		},
+		{
+			name: "deny on the table leaves its stream",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:*","Resource":"*"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:*","Resource":"` + ordersARN + `"}]}`,
+			},
+			want: ScanAll,
 		},
 		{
 			name: "conditional deny is ignored",
@@ -144,6 +152,91 @@ func TestCheckLevels(t *testing.T) {
 			name: "index only",
 			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Query","Resource":"` + ordersARN + `/index/*"}]}`},
 			want: Unscoped,
+		},
+		{
+			name: "export",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:ExportTableToPointInTime","Resource":"` + ordersARN + `"}]}`},
+			want: ScanAll,
+		},
+		{
+			name: "export slips past leading keys",
+			docs: []string{`{"Statement":[{
+				"Effect":"Allow","Action":"dynamodb:ExportTableToPointInTime","Resource":"` + ordersARN + `",
+				"Condition":{"ForAllValues:StringEquals":{"dynamodb:LeadingKeys":["org#1"]}}
+			}]}`},
+			want: ScanAll,
+		},
+		{
+			name: "export on an index only",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:ExportTableToPointInTime","Resource":"` + ordersARN + `/index/*"}]}`},
+			want: NoAccess,
+		},
+		{
+			name: "deny removes export",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":["dynamodb:Query","dynamodb:ExportTableToPointInTime"],"Resource":"` + ordersARN + `"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:Export*","Resource":"*"}]}`,
+			},
+			want: Unscoped,
+		},
+		{
+			name: "stream reader",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":["dynamodb:GetRecords","dynamodb:GetShardIterator"],"Resource":"` + ordersARN + `/stream/*"}]}`},
+			want: ScanAll,
+		},
+		{
+			name: "stream of another table",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:GetRecords","Resource":"arn:aws:dynamodb:us-east-1:111122223333:table/users/stream/*"}]}`},
+			want: NoAccess,
+		},
+		{
+			name: "get records on the table arn is not a stream grant",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:GetRecords","Resource":"` + ordersARN + `"}]}`},
+			want: NoAccess,
+		},
+		{
+			name: "deny removes stream reads",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:GetRecords","Resource":"*"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:GetRecords","Resource":"` + ordersARN + `/stream/*"}]}`,
+			},
+			want: NoAccess,
+		},
+		{
+			name: "stream only grant gives no item access",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":["dynamodb:Query","dynamodb:Scan"],"Resource":"` + ordersARN + `/stream/*"}]}`},
+			want: NoAccess,
+		},
+		{
+			name: "query on a named index",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Query","Resource":"` + ordersARN + `/index/by-status"}]}`},
+			want: Unscoped,
+		},
+		{
+			name: "scan on a named index",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/by-status"}]}`},
+			want: ScanAll,
+		},
+		{
+			name: "named index on another table",
+			docs: []string{`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Scan","Resource":"arn:aws:dynamodb:us-east-1:111122223333:table/users/index/by-status"}]}`},
+			want: NoAccess,
+		},
+		{
+			name: "deny on one index leaves the others",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/*"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/by-status"}]}`,
+			},
+			want: ScanAll,
+		},
+		{
+			name: "deny on every index",
+			docs: []string{
+				`{"Statement":[{"Effect":"Allow","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/by-status"}]}`,
+				`{"Statement":[{"Effect":"Deny","Action":"dynamodb:Scan","Resource":"` + ordersARN + `/index/*"}]}`,
+			},
+			want: NoAccess,
 		},
 	}
 	for _, tt := range tests {
@@ -188,5 +281,30 @@ func TestCheckTenantPrefix(t *testing.T) {
 	res = Check(r, orders, Options{TenantKeyPrefix: "user#"})
 	if res.Grants[0].Note != "scoped by LeadingKeys" {
 		t.Errorf("note = %q", res.Grants[0].Note)
+	}
+}
+
+func TestCheckWildcardAfterPrefix(t *testing.T) {
+	stmt := func(op, pattern string) string {
+		return `{"Statement":[{
+			"Effect":"Allow","Action":"dynamodb:Query","Resource":"` + ordersARN + `",
+			"Condition":{"ForAllValues:` + op + `":{"dynamodb:LeadingKeys":["` + pattern + `"]}}
+		}]}`
+	}
+	opts := Options{TenantKeyPrefix: "org#"}
+
+	res := Check(role(t, stmt("StringLike", "org#*")), orders, opts)
+	if res.Level != Unscoped || res.Grants[0].Note != "LeadingKeys wildcard matches every org# key" {
+		t.Errorf("org#* = %+v", res)
+	}
+
+	for _, pattern := range []string{"org#42#*", "org#${aws:PrincipalTag/org}#*"} {
+		if res := Check(role(t, stmt("StringLike", pattern)), orders, opts); res.Level != Scoped {
+			t.Errorf("%s: level = %v, want scoped", pattern, res.Level)
+		}
+	}
+
+	if res := Check(role(t, stmt("StringEquals", "org#*")), orders, opts); res.Level != Scoped {
+		t.Errorf("StringEquals org#*: level = %v, want scoped", res.Level)
 	}
 }

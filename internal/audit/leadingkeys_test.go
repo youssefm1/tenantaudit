@@ -40,7 +40,12 @@ func TestLeadingKeys(t *testing.T) {
 		{
 			name: "string like, mixed case key and operator",
 			json: `{"forallvalues:stringlike": {"DynamoDB:leadingKeys": "org#42#*"}}`,
-			want: keyScope{present: true, patterns: []string{"org#42#*"}},
+			want: keyScope{present: true, patterns: []string{"org#42#*"}, globs: []string{"org#42#*"}},
+		},
+		{
+			name: "star under string equals is not a wildcard",
+			json: `{"ForAllValues:StringEquals": {"dynamodb:LeadingKeys": ["org#*"]}}`,
+			want: keyScope{present: true, patterns: []string{"org#*"}},
 		},
 		{
 			name: "with null check",
@@ -85,6 +90,33 @@ func TestMatchesEverything(t *testing.T) {
 	}
 	if (keyScope{patterns: []string{"org#*"}}).matchesEverything() {
 		t.Error("org#* is still limited to a prefix")
+	}
+}
+
+func TestSpansTenants(t *testing.T) {
+	tests := []struct {
+		pattern string
+		want    bool
+	}{
+		{"org#*", true},
+		{"org*", true},
+		{"org#??", true},
+		{"org#42", false},
+		{"org#42#*", false},
+		{"org#${aws:PrincipalTag/org}", false},
+		{"org#${aws:PrincipalTag/org}#*", false},
+		{"user#*", false},
+	}
+	for _, tt := range tests {
+		k := keyScope{patterns: []string{tt.pattern}, globs: []string{tt.pattern}}
+		if got := k.spansTenants("org#"); got != tt.want {
+			t.Errorf("spansTenants(%q) = %v, want %v", tt.pattern, got, tt.want)
+		}
+	}
+
+	// Under StringEquals the star is a literal character.
+	if (keyScope{patterns: []string{"org#*"}}).spansTenants("org#") {
+		t.Error("a StringEquals pattern is not a wildcard")
 	}
 }
 

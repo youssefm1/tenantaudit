@@ -58,8 +58,49 @@ func (s Statement) MatchesTable(t Table) bool {
 // MatchesIndex reports whether the statement applies to at least one index
 // on the table.
 func (s Statement) MatchesIndex(t Table) bool {
-	// Any concrete index name works for a pattern like table/x/index/*.
-	return s.matchesResource(t, "table/"+t.Name+"/index/_")
+	return s.matchesChild(t, "index")
+}
+
+// MatchesEveryIndex reports whether the statement applies to any index the
+// table could have, as table/x/index/* does.
+func (s Statement) MatchesEveryIndex(t Table) bool {
+	return s.matchesEveryChild(t, "index")
+}
+
+// MatchesStream reports whether the statement applies to at least one of
+// the table's streams.
+func (s Statement) MatchesStream(t Table) bool {
+	return s.matchesChild(t, "stream")
+}
+
+// MatchesEveryStream reports whether the statement applies to any stream
+// the table could have, as table/x/stream/* does.
+func (s Statement) MatchesEveryStream(t Table) bool {
+	return s.matchesEveryChild(t, "stream")
+}
+
+// matchesChild reports whether the statement applies to at least one index
+// or stream under the table. kind is "index" or "stream".
+func (s Statement) matchesChild(t Table, kind string) bool {
+	if s.matchesEveryChild(t, kind) {
+		return true
+	}
+	if len(s.NotResource) > 0 {
+		return false
+	}
+	// A resource can also name one child, like table/x/index/by-status.
+	// The export doesn't list them, so assume it exists.
+	for _, p := range s.Resource {
+		if head, _, ok := strings.Cut(p, "/"+kind+"/"); ok && matchARN(head, t, "table/"+t.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s Statement) matchesEveryChild(t Table, kind string) bool {
+	// A made-up name only matches patterns that don't name one.
+	return s.matchesResource(t, "table/"+t.Name+"/"+kind+"/_")
 }
 
 func (s Statement) matchesResource(t Table, resource string) bool {

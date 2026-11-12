@@ -87,19 +87,65 @@ func TestMatchesTable(t *testing.T) {
 func TestMatchesIndex(t *testing.T) {
 	table := Table{Name: "orders"}
 	tests := []struct {
-		resource string
-		want     bool
+		resource   string
+		any, every bool
 	}{
-		{"arn:aws:dynamodb:*:*:table/orders/index/*", true},
-		{"arn:aws:dynamodb:*:*:table/orders/*", true},
-		{"arn:aws:dynamodb:*:*:table/orders", false},
-		{"arn:aws:dynamodb:*:*:table/*", true},
-		{"*", true},
+		{"arn:aws:dynamodb:*:*:table/orders/index/*", true, true},
+		{"arn:aws:dynamodb:*:*:table/orders/*", true, true},
+		{"arn:aws:dynamodb:*:*:table/orders", false, false},
+		{"arn:aws:dynamodb:*:*:table/*", true, true},
+		{"*", true, true},
+		{"arn:aws:dynamodb:*:*:table/orders/index/by-status", true, false},
+		{"arn:aws:dynamodb:*:*:table/orders/index/by-*", true, false},
+		{"arn:aws:dynamodb:*:*:table/*/index/by-status", true, false},
+		{"arn:aws:dynamodb:*:*:table/users/index/by-status", false, false},
+		{"arn:aws:dynamodb:*:*:table/orders-archive/index/by-status", false, false},
 	}
 	for _, tt := range tests {
 		st := Statement{Resource: Strings{tt.resource}}
-		if got := st.MatchesIndex(table); got != tt.want {
-			t.Errorf("MatchesIndex(%q) = %v, want %v", tt.resource, got, tt.want)
+		if got := st.MatchesIndex(table); got != tt.any {
+			t.Errorf("MatchesIndex(%q) = %v, want %v", tt.resource, got, tt.any)
+		}
+		if got := st.MatchesEveryIndex(table); got != tt.every {
+			t.Errorf("MatchesEveryIndex(%q) = %v, want %v", tt.resource, got, tt.every)
+		}
+	}
+}
+
+func TestMatchesIndexNotResource(t *testing.T) {
+	table := Table{Name: "orders"}
+	// Leaving out one index still covers the others.
+	one := Statement{NotResource: Strings{"arn:aws:dynamodb:*:*:table/orders/index/by-status"}}
+	if !one.MatchesIndex(table) {
+		t.Error("NotResource on one index should still cover the rest")
+	}
+	all := Statement{NotResource: Strings{"arn:aws:dynamodb:*:*:table/orders/index/*"}}
+	if all.MatchesIndex(table) {
+		t.Error("NotResource on every index should cover none")
+	}
+}
+
+func TestMatchesStream(t *testing.T) {
+	table := Table{Name: "orders"}
+	tests := []struct {
+		resource   string
+		any, every bool
+	}{
+		{"arn:aws:dynamodb:*:*:table/orders/stream/*", true, true},
+		{"arn:aws:dynamodb:*:*:table/orders/*", true, true},
+		{"*", true, true},
+		{"arn:aws:dynamodb:*:*:table/orders/stream/2026-01-05T10:00:00.000", true, false},
+		{"arn:aws:dynamodb:*:*:table/orders", false, false},
+		{"arn:aws:dynamodb:*:*:table/orders/index/*", false, false},
+		{"arn:aws:dynamodb:*:*:table/users/stream/*", false, false},
+	}
+	for _, tt := range tests {
+		st := Statement{Resource: Strings{tt.resource}}
+		if got := st.MatchesStream(table); got != tt.any {
+			t.Errorf("MatchesStream(%q) = %v, want %v", tt.resource, got, tt.any)
+		}
+		if got := st.MatchesEveryStream(table); got != tt.every {
+			t.Errorf("MatchesEveryStream(%q) = %v, want %v", tt.resource, got, tt.every)
 		}
 	}
 }

@@ -70,7 +70,14 @@ type Options struct {
 	TenantKeyPrefix string
 }
 
-const scan = "dynamodb:Scan"
+// These read the whole table and send no partition key, so LeadingKeys
+// does not limit them.
+const (
+	scan   = "dynamodb:Scan"
+	export = "dynamodb:ExportTableToPointInTime"
+	// getRecords reads a table stream, which carries every tenant's changes.
+	getRecords = "dynamodb:GetRecords"
+)
 
 // keyActions read or write items by partition key, so LeadingKeys applies.
 var keyActions = []string{
@@ -101,8 +108,8 @@ func Check(role Role, table policy.Table, opts Options) Result {
 			if st.Effect != "Allow" {
 				continue
 			}
-			onTable, onIndex := st.MatchesTable(table), st.MatchesIndex(table)
-			if !onTable && !onIndex {
+			onTable, onIndex, onStream := st.MatchesTable(table), st.MatchesIndex(table), st.MatchesStream(table)
+			if !onTable && !onIndex && !onStream {
 				continue
 			}
 			name := st.Sid
@@ -122,21 +129,47 @@ func Check(role Role, table policy.Table, opts Options) Result {
 				g.Actions = append(g.Actions, action)
 			}
 
-			for _, action := range keyActions {
-				if !st.MatchesAction(action) || denied(role, table, action, onTable) {
-					continue
+			// A Deny has to cover the same resource the grant is on. For an
+			// index or stream that means all of them, since a Deny on one
+			// named index leaves the others reachable.
+			items := func(d policy.Statement) bool {
+				if onTable {
+					return d.MatchesTable(table)
 				}
-				level, note := classify(scope, opts)
-				add(action, level, note)
+				return d.MatchesEveryIndex(table)
 			}
-			if st.MatchesAction(scan) && !denied(role, table, scan, onTable) && !scope.requiresKey {
-				// Scan sends no partition key, and ForAllValues passes when
-				// the key is missing, so LeadingKeys alone does not stop it.
-				note := "Scan reads every tenant"
-				if scope.present {
-					note = "Scan is not limited by LeadingKeys without a Null check"
+			stream := func(d policy.Statement) bool { return d.MatchesEveryStream(table) }
+
+			if onTable || onIndex {
+				for _, action := range keyActions {
+					if !st.MatchesAction(action) || denied(role, action, items) {
+						continue
+					}
+					level, note := classify(scope, opts)
+					add(action, level, note)
 				}
-				add(scan, ScanAll, note)
+			}
+			// These send no partition key, and ForAllValues passes when the
+			// key is missing, so LeadingKeys alone does not stop them.
+			whole := func(action string, covers func(policy.Statement) bool) {
+				if !st.MatchesAction(action) || denied(role, action, covers) || scope.requiresKey {
+					return
+				}
+				note := "reads every tenant"
+				if scope.present {
+					note = "not limited by LeadingKeys without a Null check"
+				}
+				add(action, ScanAll, note)
+			}
+			if onTable || onIndex {
+				whole(scan, items)
+			}
+			if onTable {
+				// An export is taken from the table, never from an index.
+				whole(export, items)
+			}
+			if onStream {
+				whole(getRecords, stream)
 			}
 
 			for _, g := range byNote {
@@ -168,6 +201,8 @@ func classify(scope keyScope, opts Options) (Level, string) {
 		return Unscoped, "no tenant condition"
 	case scope.matchesEverything():
 		return Unscoped, "LeadingKeys allows every key"
+	case opts.TenantKeyPrefix != "" && scope.spansTenants(opts.TenantKeyPrefix):
+		return Unscoped, fmt.Sprintf("LeadingKeys wildcard matches every %s key", opts.TenantKeyPrefix)
 	case scope.anyValue:
 		return Unscoped, "ForAnyValue passes when one key in a batch matches"
 	case opts.TenantKeyPrefix != "" && !scope.usesPrefix(opts.TenantKeyPrefix):
@@ -176,9 +211,11 @@ func classify(scope keyScope, opts Options) (Level, string) {
 	return Scoped, "scoped by LeadingKeys"
 }
 
-// denied reports whether an unconditional Deny blocks the action. A Deny
-// with conditions is ignored, since it may or may not apply at request time.
-func denied(role Role, table policy.Table, action string, onTable bool) bool {
+// denied reports whether an unconditional Deny blocks the action. covers
+// says whether a Deny statement applies to the resource the grant is on. A
+// Deny with conditions is ignored, since it may or may not apply at request
+// time.
+func denied(role Role, action string, covers func(policy.Statement) bool) bool {
 	for _, p := range role.Policies {
 		if p.Document == nil {
 			continue
@@ -187,10 +224,7 @@ func denied(role Role, table policy.Table, action string, onTable bool) bool {
 			if st.Effect != "Deny" || len(st.Condition) > 0 || !st.MatchesAction(action) {
 				continue
 			}
-			if onTable && st.MatchesTable(table) {
-				return true
-			}
-			if !onTable && st.MatchesIndex(table) {
+			if covers(st) {
 				return true
 			}
 		}
